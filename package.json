@@ -1,0 +1,10 @@
+{
+	"name": "jslinkshortener",
+	"description": "Link shortener",
+	"version": "1.0.0",
+	"private": true,
+	"dependencies": {
+		"express": "4.0.0",
+		"pg": "3.0.3"
+	}
+}
