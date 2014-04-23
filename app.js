@@ -127,7 +127,7 @@ wss.on('connection', function(ws) {
                 return;
             }
 
-            if (ws._socket.remoteAddress !== result.rows[0].ip) {
+            if (ws._socket.remoteAddress !== row.ip) {
                 ws.close();
                 return;
             }
