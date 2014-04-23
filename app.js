@@ -1,10 +1,13 @@
 var express = require('express');
 var pg = require('pg');
-var redis = require("redis");
+var redis = require('redis');
+var websocket = require('ws').Server;
 
 var app = express();
 var pgClient = new pg.Client(process.env.DATABASE_URL || 'postgresql://mark@localhost/linkshortener');
 var redisClient = redis.createClient();
+var wss = new websocket({port: 3001});
+var wsClients = {};
 
 // Constants
 var url_safe = ['2', 'f', 'D', '4', 'I', 'o', 'a', 'X', 'p', 'g', 'e', '9', 'i', '0', 'x', 'O', 'H', 'W', 's', 'h', 'Q', 'r', 'k', 'y', 'Z', 'c', '6', 'b', 'Y', 'S', 'J', 'M', 'E', 'G', 'l', '-', 'T', 'B', 'V', 'F', 'K', 'v', 'n', 'A', '_', 'U', 't', 'j', 'w', '1', 'd', 'N', 'm', 'u', 'C', 'R', '3', 'L', 'q', '8', 'z', 'P', '5', '7'];
@@ -43,6 +46,17 @@ function decode_int(v) {
     return res;
 }
 
+function registerClick(id, ip, ua) {
+    redisClient.expire(id, 10);
+
+    pgClient.query('INSERT INTO clicks (inserted, ip, user_agent, link_id) VALUES (NOW(), $1, $2, $3::int)', [ip, ua, id]);
+
+    var clients = wsClients[id];
+    for (var i in clients) {
+        clients[i].send("click");
+    }
+}
+
 app.get('/:link_id', function(req, res) {
     var link_id = req.params.link_id;
     if (link_id.length < 3) {
@@ -50,16 +64,16 @@ app.get('/:link_id', function(req, res) {
         return;
     }
 
-    redisClient.get(link_id, function(err, reply) {
-        if (!err && reply !== null) {
-            res.redirect(reply);
-            redisClient.expire(link_id, 10);
-            return;
-        }
+    var id = decode_int(link_id.slice(0, -2));
+    if (id === 0) {
+        res.send(404);
+        return;
+    }
 
-        var id = decode_int(link_id.slice(0, -2));
-        if (id === 0) {
-            res.send(404);
+    redisClient.get(id, function(err, url) {
+        if (!err && url !== null) {
+            res.redirect(url);
+            registerClick(id, req.ip, req.headers['user-agent']);
             return;
         }
 
@@ -81,9 +95,58 @@ app.get('/:link_id', function(req, res) {
             }
 
             res.redirect(row.url);
-            redisClient.set(link_id, row.url);
-            redisClient.expire(link_id, 10);
+            redisClient.set(id, row.url);
+            registerClick(id, req.ip, req.headers['user-agent']);
         });
+    });
+});
+
+wss.on('connection', function(ws) {
+    var linkId = 0;
+    ws.on('message', function(message) {
+        if (message.length < 3) {
+            ws.close();
+            return;
+        }
+
+        var id = decode_int(message.slice(0, -2));
+        if (id === 0) {
+            ws.close();
+            return;
+        }
+
+        pgClient.query('SELECT random, host(creator_ip) AS ip FROM links WHERE id = ' + id, function(err, result) {
+            if (err || result.rowCount === 0) {
+                ws.close();
+                return;
+            }
+
+            var row = result.rows[0];
+            if (row.random !== message.slice(-2)) {
+                ws.close();
+                return;
+            }
+
+            if (ws._socket.remoteAddress !== result.rows[0].ip) {
+                ws.close();
+                return;
+            }
+
+            linkId = id;
+            if (wsClients[linkId]) {
+                wsClients[linkId].push(ws);
+            } else {
+                wsClients[linkId] = [ws];
+            }
+        });
+    });
+    ws.on('close', function() {
+        if (linkId !== 0) {
+            var index = wsClients[linkId].indexOf(ws);
+            if (index != -1) {
+                wsClients[linkId].splice(index, 1);
+            }
+        }
     });
 });
 
