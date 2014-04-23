@@ -45,15 +45,15 @@ function decode_int(v) {
 
 app.get('/:link_id', function(req, res) {
     var link_id = req.params.link_id;
+    if (link_id.length < 3) {
+        res.send(404);
+        return;
+    }
+
     redisClient.get(link_id, function(err, reply) {
-        if (reply !== null) {
+        if (!err && reply !== null) {
             res.redirect(reply);
             redisClient.expire(link_id, 10);
-            return;
-        }
-
-        if (link_id.length < 3) {
-            res.send(404);
             return;
         }
 
