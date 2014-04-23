@@ -2,6 +2,7 @@ var express = require('express');
 var pg = require('pg');
 var redis = require('redis');
 var websocket = require('ws').Server;
+var bodyParser = require('body-parser');
 
 var app = express();
 var pgClient = new pg.Client(process.env.DATABASE_URL || 'postgresql://mark@localhost/linkshortener');
@@ -52,10 +53,35 @@ function registerClick(id, ip, ua) {
     pgClient.query('INSERT INTO clicks (inserted, ip, user_agent, link_id) VALUES (NOW(), $1, $2, $3::int)', [ip, ua, id]);
 
     var clients = wsClients[id];
-    for (var i in clients) {
-        clients[i].send("click");
+    if (clients && clients.length !== 0) {
+        var jsonString = JSON.stringify({inserted: new Date().toUTCString(), user_agent: ua});
+        for (var i in clients) {
+            clients[i].send(jsonString);
+        }
     }
 }
+
+app.engine('.html', require('ejs').__express);
+app.set('view engine', 'html');
+
+app.use(bodyParser());
+app.get('/', function(req, res) {
+    res.render('index');
+});
+app.post('/shorten', function(req, res) {
+    var random_value = Math.floor(Math.random() * 4096);
+    var random_string = url_safe[random_value >> 6] + url_safe[random_value & 63];
+    pgClient.query('INSERT INTO links (url, creator_ip, created, random) VALUES ($1, $2, NOW(), $3) RETURNING id', [req.body.url, req.ip, random_string], function(err, result) {
+        res.render('shortened', {
+            base_url: req.headers.host,
+            encoded_id: encode_int(result.rows[0].id),
+            random: random_string,
+            long_url: req.body.url,
+            created: new Date().toUTCString(),
+            clicks: {}
+        });
+    });
+});
 
 app.get('/:link_id', function(req, res) {
     var link_id = req.params.link_id;
@@ -145,6 +171,9 @@ wss.on('connection', function(ws) {
             var index = wsClients[linkId].indexOf(ws);
             if (index != -1) {
                 wsClients[linkId].splice(index, 1);
+                if (wsClients[linkId].length === 0) {
+                    delete wsClients[linkId];
+                }
             }
         }
     });
