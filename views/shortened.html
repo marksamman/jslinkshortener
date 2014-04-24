@@ -8,7 +8,7 @@
 <div class="row">
     <div class="col-xs-4"><strong>Short URL:</strong><br>http://<%= base_url %>/<%= link_id %></div>
     <div class="col-xs-4"><strong>Redirects to:</strong><br><%= long_url %></div>
-    <div class="col-xs-4"><strong>Created:</strong><br><%= created %></div>
+    <div class="col-xs-4"><strong>Created:</strong><br><%= new Date(parseInt(created)).toUTCString() %></div>
 </div>
 <h3>Clicks</h3>
 <table class="table table-striped table-condensed">
@@ -20,7 +20,7 @@
     </thead>
     <tbody id="clicks">
         <% for (var i in clicks) { %>
-        <tr><td><%= new Date(clicks[i].inserted).toUTCString() %></td><td><%= clicks[i].user_agent %></td></tr>
+        <tr><td><%= new Date(parseInt(clicks[i].inserted)).toUTCString() %></td><td><%= clicks[i].user_agent %></td></tr>
         <% } %>
     </tbody>
 </table>

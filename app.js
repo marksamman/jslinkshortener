@@ -52,7 +52,7 @@ function encode_int(i) {
 function decode_int(v) {
     var res = 0;
     var mult = 1;
-    for (i = v.length; --i >= 0;) {
+    for (var i = v.length; --i >= 0;) {
         var idx = v.charCodeAt(i);
         if (idx >= decode_array.length) {
             return 0;
@@ -72,7 +72,7 @@ function decode_int(v) {
 function registerClick(id, ip, ua) {
     redisClient.expire(id, 10);
 
-    pgClient.query('INSERT INTO clicks (inserted, ip, user_agent, link_id) VALUES (NOW(), $1, $2, ' + id + ')', [ip, ua]);
+    pgClient.query('INSERT INTO clicks (inserted, ip, user_agent, link_id) VALUES (FLOOR(EXTRACT(EPOCH FROM NOW())), $1, $2, ' + id + ')', [ip, ua]);
 
     var clients = wsClients[id];
     if (clients && clients.length !== 0) {
@@ -93,7 +93,7 @@ app.get('/', function(req, res) {
 app.post('/shorten', function(req, res) {
     var random_value = Math.floor(Math.random() * 4096);
     var random_string = url_safe[random_value >> 6] + url_safe[random_value & 63];
-    pgClient.query('INSERT INTO links (url, creator_ip, created, random) VALUES ($1, $2, NOW(), $3) RETURNING id', [req.body.url, req.ip, random_string], function(err, result) {
+    pgClient.query('INSERT INTO links (url, creator_ip, created, random) VALUES ($1, $2, FLOOR(EXTRACT(EPOCH FROM NOW())), $3) RETURNING id', [req.body.url, req.ip, random_string], function(err, result) {
         if (err) {
             res.render('index', {error: 'A database error was encountered.'});
             console.log(err);
@@ -117,7 +117,7 @@ app.get('/shortened/:link_id', function(req, res) {
         return;
     }
 
-    pgClient.query('SELECT url, created FROM links WHERE id = ' + id, function(err, result) {
+    pgClient.query('SELECT url, created*1000 AS created FROM links WHERE id = ' + id, function(err, result) {
         if (err) {
             res.render('index', {error: 'A database error was encountered.'});
             console.log(err);
@@ -129,7 +129,7 @@ app.get('/shortened/:link_id', function(req, res) {
             return;
         }
 
-        pgClient.query('SELECT EXTRACT(EPOCH FROM inserted AT TIME ZONE \'GMT+4\')*1000 AS inserted, user_agent FROM clicks WHERE link_id = ' + id + ' ORDER BY id DESC', function(err2, result2) {
+        pgClient.query('SELECT inserted*1000 AS inserted, user_agent FROM clicks WHERE link_id = ' + id + ' ORDER BY id DESC', function(err2, result2) {
             if (err2) {
                 res.render('index', {error: 'A database error was encountered.'});
                 console.log(err2);
@@ -139,7 +139,7 @@ app.get('/shortened/:link_id', function(req, res) {
             var row = result.rows[0];
             res.render('shortened', {
                 base_url: req.headers.host,
-                link_id: req.params.link_id,
+                link_id: link_id,
                 long_url: row.url,
                 created: row.created,
                 clicks: result2.rows
