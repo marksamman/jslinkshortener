@@ -1,12 +1,12 @@
 <% include header.html %>
-<% if (clicks.length == 0) { %>
+<% if (clicks.length === 0) { %>
 <div class="alert alert-success">
-    <strong>Success!</strong> You have generated a short link.
+    <strong>Success!</strong> You have generated a short link. Share it with your friends!
 </div>
 <% } %>
 <h3>Details</h3>
 <div class="row">
-    <div class="col-xs-4"><strong>Short URL:</strong><br>http://<%= base_url %>/<%= encoded_id %><%= random %></div>
+    <div class="col-xs-4"><strong>Short URL:</strong><br>http://<%= base_url %>/<%= link_id %></div>
     <div class="col-xs-4"><strong>Redirects to:</strong><br><%= long_url %></div>
     <div class="col-xs-4"><strong>Created:</strong><br><%= created %></div>
 </div>
@@ -20,7 +20,7 @@
     </thead>
     <tbody id="clicks">
         <% for (var i in clicks) { %>
-        <tr><td><%= clicks[i].inserted %> UTC</td><td><%= clicks[i].user_agent %></td></tr>
+        <tr><td><%= new Date(clicks[i].inserted).toUTCString() %></td><td><%= clicks[i].user_agent %></td></tr>
         <% } %>
     </tbody>
 </table>
@@ -30,7 +30,7 @@ function initWebSocket() {
     websocket = new WebSocket('ws://localhost:3001/');
     websocket.onopen = function(evt) {
         console.log('connected');
-        websocket.send('<%= encoded_id %><%= random %>');
+        websocket.send('<%= link_id %>');
     }
     websocket.onclose = function(evt) {
         console.log('disconnected');
@@ -39,7 +39,7 @@ function initWebSocket() {
         var res = JSON.parse(evt.data);
         var row = clicks.insertRow(0);
         var inserted = row.insertCell(0);
-        inserted.innerHTML = res.inserted;
+        inserted.innerHTML = new Date(res.inserted).toUTCString();
         var userAgent = row.insertCell(1);
         userAgent.innerHTML = res.user_agent;
     }

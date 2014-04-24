@@ -50,11 +50,11 @@ function decode_int(v) {
 function registerClick(id, ip, ua) {
     redisClient.expire(id, 10);
 
-    pgClient.query('INSERT INTO clicks (inserted, ip, user_agent, link_id) VALUES (NOW(), $1, $2, $3::int)', [ip, ua, id]);
+    pgClient.query('INSERT INTO clicks (inserted, ip, user_agent, link_id) VALUES (NOW(), $1, $2, ' + id + ')', [ip, ua]);
 
     var clients = wsClients[id];
     if (clients && clients.length !== 0) {
-        var jsonString = JSON.stringify({inserted: new Date().toUTCString(), user_agent: ua});
+        var jsonString = JSON.stringify({inserted: +new Date(), user_agent: ua});
         for (var i in clients) {
             clients[i].send(jsonString);
         }
@@ -66,19 +66,62 @@ app.set('view engine', 'html');
 
 app.use(bodyParser());
 app.get('/', function(req, res) {
-    res.render('index');
+    res.render('index', {error: null});
 });
 app.post('/shorten', function(req, res) {
     var random_value = Math.floor(Math.random() * 4096);
     var random_string = url_safe[random_value >> 6] + url_safe[random_value & 63];
     pgClient.query('INSERT INTO links (url, creator_ip, created, random) VALUES ($1, $2, NOW(), $3) RETURNING id', [req.body.url, req.ip, random_string], function(err, result) {
-        res.render('shortened', {
-            base_url: req.headers.host,
-            encoded_id: encode_int(result.rows[0].id),
-            random: random_string,
-            long_url: req.body.url,
-            created: new Date().toUTCString(),
-            clicks: {}
+        if (err) {
+            res.render('index', {error: 'A database error was encountered.'});
+            console.log(err);
+            return;
+        }
+
+        res.redirect('/shortened/' + encode_int(result.rows[0].id) + random_string);
+    });
+});
+
+app.get('/shortened/:link_id', function(req, res) {
+    var link_id = req.params.link_id;
+    if (link_id.length < 3) {
+        res.send(404);
+        return;
+    }
+
+    var id = decode_int(link_id.slice(0, -2));
+    if (id === 0) {
+        res.send(404);
+        return;
+    }
+
+    pgClient.query('SELECT url, created FROM links WHERE id = ' + id, function(err, result) {
+        if (err) {
+            res.render('index', {error: 'A database error was encountered.'});
+            console.log(err);
+            return;
+        }
+
+        if (result.rowCount === 0) {
+            res.redirect('index', {error: 'A shortened URL with that ID was not found.'});
+            return;
+        }
+
+        pgClient.query('SELECT EXTRACT(EPOCH FROM inserted AT TIME ZONE \'GMT+4\')*1000 AS inserted, user_agent FROM clicks WHERE link_id = ' + id + ' ORDER BY id DESC', function(err2, result2) {
+            if (err2) {
+                res.render('index', {error: 'A database error was encountered.'});
+                console.log(err2);
+                return;
+            }
+
+            var row = result.rows[0];
+            res.render('shortened', {
+                base_url: req.headers.host,
+                link_id: req.params.link_id,
+                long_url: row.url,
+                created: row.created,
+                clicks: result2.rows
+            });
         });
     });
 });

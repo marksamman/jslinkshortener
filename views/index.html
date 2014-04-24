@@ -1,4 +1,9 @@
 <% include header.html %>
+<% if (error !== null) { %>
+<div class="alert alert-danger">
+    <strong>Whoops!</strong> <%= error %>
+</div>
+<% } %>
 <form role="form" class="form-horizontal" method="post" action="/shorten">
     <div class="form-group">
         <label for="url" class="col-xs-2 control-label">URL:</label>
